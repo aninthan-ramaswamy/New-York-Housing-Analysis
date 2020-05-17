@@ -1,6 +1,6 @@
 # New-York-Housing-Analysis
 
-Below is a brief description regarding the project and the approach. The R Notebook for the analysis can be found [here](https://github.com/aninthan-ramaswamy/New-York-Housing-Analysis/blob/master/New_York_Housing_Analysis.html).
+Below is a brief description regarding the project and the approach. The R Notebook for the analysis can be found [here](https://aninthan-ramaswamy.github.io/New-York-Housing-Analysis/New_York_Housing_Analysis.html).
 
 ## Problem Statement and Solution Approach
 
