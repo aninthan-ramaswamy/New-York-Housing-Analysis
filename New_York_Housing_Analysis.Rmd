@@ -1,0 +1,873 @@
+---
+title: " New York - Housing Analysis"
+author: Aninthan Ramaswamy
+abstract: |
+
+  The following document is the analysis of the AirBnB and Zillow data, aimed at providing recommendations to client on the best investment regions for short-time rental listing.
+output:
+  html_document:
+    df_print: paged
+    toc: true
+---
+
+
+#Problem Statement and Solution Approach
+
+This project aims at looking at the cost and revenue data of houses in New York, aimed at recommending key areas of profitability. Data is sourced from two key locations for the same purpose. The idea would be to understand the key features of profitability of a house by identifying the various features, and digging into the 
+
+The problem aims at consulting for a real estate company that is looking to invest in two bedroom properties in New York City. The company has a niche of purchasing the properties and renting it out on a short-term basis. The particular ask to identify which zip codes are the best to invest in.
+
+This solution aims at digging deep into the available data sources, finding the key variables/metrics that can be used to best define and describe the neighourhood and help calculate the key performance indices (like revenue, reviews and so on). The approach splits the main ask into a number of sub-questions in order to tackle the problem and the analyses on the individual tasks aim to provide a holistic solution.
+
+The key ask - **"What are the best zip codes in New York City to invest in a 2-bed room apartment for short-term rentals?"** is broken down as such into certain key questions aimed at providing a specific perspective.
+
+* **What is the neighbourhood that has the most listings in NYC?**
+* **How does the price reflect across region and zipcodes?**
+* **How does the revenue calculated vary across region and zipcode?**
+* **How much would the investment be across different regions?**
+* **How are the reviews across different region and zipcode?**
+* **What would be the breakeven time for the investment in a region?**
+
+The analyses uses the AirBnB listing data (Revenue) and Zillow data (cost). The Analysis is seperated into the following key sections
+
+* Data Load
+* Data Exploration (Includes exploration, cleaning and transformation)
+* Data Merge
+* Deep Dive Analysis
+* Consolidation and recommendation
+* Next steps
+
+***
+***
+
+#Install and Load Packages
+
+####Installing required packages
+```{r Install packages, warning = FALSE, message = FALSE}
+#List of required (CRAN) packages
+pkgs <- c("data.table", "Hmisc", "plotly", "dplyr", "tidyr")
+
+#Install required packages
+for(pkg in pkgs){
+  if(!(pkg %in% installed.packages()[,"Package"])){
+    install.packages(pkg)
+  }
+}
+
+```
+
+***
+
+####Load the required library
+```{r Loading packages, warning = FALSE, message=FALSE}
+require(pkgs)
+lapply(pkgs, require, character.only = TRUE)
+```
+
+```{r Clear environment, include = FALSE}
+rm(list=ls())
+```
+
+***
+***
+
+#Data Load
+
+The datasets are loaded into R based on the file name. There are two datasets that are available for this particular analysis -
+
+* **Zillow Dataset**  - Cost of houses by region till 2017. Sourced from https://www.zillow.com/research/data/
+* **AirBNB Dataset**  - Property listings in New York City with information regarding location, pricing, reviews and availability among others. Sourced from http://data.insideairbnb.com/united-states/ny/new-york-city/2019-07-08/data/listings.csv.gz
+
+####Loading Zillow Dataset
+```{r Load Zillow Data, warning = FALSE, include = FALSE}
+#File name for Zillow dataset
+zillow_file_name <- "data/2_bedroom_zcost.csv"
+
+#Loading the Zillow dataset
+if(file.exists(zillow_file_name))
+{
+  zillow_data_raw <- read.csv (zillow_file_name, stringsAsFactors = F, header = T, na.strings = NA)
+  }else print("File does not exist")
+
+rm(zillow_file_name)
+
+```
+
+***
+
+####Loading AirBnB Dataset
+
+```{r Load AirBnB Data, warning = FALSE, include = FALSE}
+#File name for AirBnB dataset
+airbnb_file_name <- "data/listings.csv"
+
+#Loading the AirBnB dataset
+if(file.exists(airbnb_file_name))
+{
+  airbnb_data_raw <- read.csv(airbnb_file_name, stringsAsFactors = F, header = T, na.strings = c("",NA,"NA"))
+  }else print("File does not exist")
+
+rm(airbnb_file_name)
+```
+
+***
+***
+
+#Data Exploration
+
+The datasets that have been loaded are verified and explored to understand the dimensions, the data format and the values present in the columns with a key objective of cleaning and extracting the apt data for further analyses.
+
+##The AirBnB data
+
+####Checking for the data structure
+
+```{r AirBnb Dimensions}
+#Check the number of records and variables
+dim(airbnb_data_raw)
+```
+
+The AirBnB data consists of 106 variables and 48895 listings present in it.
+
+***
+
+####Checking for duplicates in the dataset
+```{r AirBnB Duplicates}
+#Check for duplicates in the data
+airbnb_data_raw[which(duplicated(airbnb_data_raw) == T),]
+airbnb_data_raw[which(duplicated(airbnb_data_raw$id) == T),]
+```
+
+There are no overall duplicates in the data, nor with the IDs. Each record could be uniquely identified using the ID column.
+
+***
+
+####Checking for variables
+
+```{r AirBnB Structure, include=FALSE}
+str(airbnb_data_raw)
+```
+
+```{r AirBnB MetaData}
+numMissing <- contents(airbnb_data_raw, sort = c("NAs"))$contents
+table(numMissing$Storage)
+```
+
+A majority of the columns are characters, containing the description and the location of the listing. A brief view of the same is giving below.
+```{r AirBnB MetaData Display}
+numMissing[order(-numMissing$NAs),]
+```
+
+A view of the integer columns are present below.
+```{r AirBnB MetaData Integers}
+intNumMissing <- numMissing[which(numMissing$Storage %in% c("integer", "numeric", "double")),]
+intNumMissing[order(-intNumMissing$NAs),]
+```
+
+A lot of the description data regarding the host and the property listing is not necessary for preliminary analysis. This would have to be removed. There are also a lot of NA(missing values) in the columns, a summary of which is present in the above Views.
+
+***
+
+####Key Findings
+
+* Square Feet is mostly (99%) missing. While the Square Feet might have provided scope for important analyses, the magnitude of missing values deems it not usable.
+* The zip code and price columns are not recognized as integer values, suggesting they have a character value present in it that would have to be treated for future use.
+* While there are good amount of data present for reviews and availability metrics, there are quite a few missing too. These variables would be analysed later on a subsetted dataset for better focus.
+
+***
+
+####Treating the price column
+
+```{r AirBnB Price Check, include=FALSE}
+unique(airbnb_data_raw$price)
+```
+
+A glimpse of the price column suggests that there is a preceding $, that renders the column as a character. This character is removed and the resultant value is formated as a numeric value.
+
+```{r AirBnB Price Treatment}
+airbnb_data_raw$price_cleaned <- as.numeric(gsub('[$,]','',airbnb_data_raw$price))
+```
+
+```{r AirBnB Price Treated Summary}
+summary(airbnb_data_raw$price_cleaned)
+```
+
+Checking the summary and spread of the price variables, we can sense that a few outliers might be present (Eg. Price 0 and Price 10000, which seems exorbidant).
+
+***
+
+####Treating the zipcode column
+
+```{r AirBnB ZipCode Check, include = FALSE}
+unique(airbnb_data_raw$zipcode)
+```
+
+A glimpse of the zipcode column suggests that a few values are in the 5-4 zip format, the hyphen causing it to be rendered as a character column. This is fine because they should not be treated as an integer even though they are made of numbers. Splitting zipcodes into 2 columns - the 5 number zip and the additional 4 digit code
+
+```{r AirBnB zipcode separation, warning=FALSE}
+#Using the separate function to create the "zipcode_9" columns
+airbnb_data_raw <- airbnb_data_raw %>% separate(zipcode, c("zipcode","zipcode_9"),"-")
+```
+
+It is noticable that there are zipcodes with NA values (as shown in the above tables). Each listing needs to have an identifiable zipcode as this is pivotal to the analysis. This is fixed by matching the latitude-longitude of these missing records, and extracting the closest zipcode from the rest of the data (latitude-longitude rounded up to 2 digits). 
+
+The first step is to create a zipcode lookup table for the latitude-longitudes.
+
+```{r AirBnB zipcode lookup}
+zipcodes_lookup <- airbnb_data_raw[,c("latitude", "longitude", "zipcode")]
+zipcodes_lookup$latitude <- round(zipcodes_lookup$latitude, 2)
+zipcodes_lookup$longitude <- round(zipcodes_lookup$longitude, 2)
+zipcodes_lookup <- zipcodes_lookup[!duplicated(zipcodes_lookup$latitude, zipcodes_lookup$longitude),]
+names(zipcodes_lookup)[which(names(zipcodes_lookup)=="zipcode")] <- "zipcode_new"
+```
+
+Once we have created a zipcode lookup table, we impute the zipcodes for the missing records.
+```{r AirBnB zipcode imputation}
+airbnb_data_raw$latitude_round <- round(airbnb_data_raw$latitude, 2)
+airbnb_data_raw$longitude_round <- round(airbnb_data_raw$longitude, 2)
+
+airbnb_data_raw <- merge(airbnb_data_raw, zipcodes_lookup, by.x = c("latitude_round", "longitude_round"), by.y = c("latitude", "longitude"), all.x = T)
+
+airbnb_data_raw$zipcode_2 <- airbnb_data_raw$zipcode
+airbnb_data_raw$zipcode_2[which(is.na(airbnb_data_raw$zipcode_2))] <- airbnb_data_raw$zipcode_new[which(is.na(airbnb_data_raw$zipcode_2))]
+```
+
+
+```{r AirBnB zipcode imputed check, include = FALSE}
+unique(airbnb_data_raw$zipcode2)
+```
+
+***
+
+####Checking the region columns
+
+There are a few columns that help identify the location of the particular listing. The columns are the street, neighbourhood, neighbourhood_cleansed, neighbourhood_group_cleansed, city, state, market, smart_location, country_code and country. Since all of these are character columns, the aim is to identify the apt variable (or combination of variables) that would provide sufficient depth for drill down of our analysis. A summary of this is present below
+
+```{r}
+neighbourhood_uniques <- data.table(column = names(sapply(airbnb_data_raw[,c("street", "neighbourhood", "neighbourhood_cleansed", "neighbourhood_group_cleansed",  "city", "state" , "market", "smart_location", "country_code", "country")], function(x) length(unique(x)))), uniqueValue = sapply(airbnb_data_raw[,c("street", "neighbourhood", "neighbourhood_cleansed", "neighbourhood_group_cleansed",  "city", "state" , "market", "smart_location", "country_code", "country")], function(x) length(unique(x))))
+
+neighbourhood_uniques
+```
+
+```{r AirBnb Neighbourhood uniques, include = FALSE}
+unique(airbnb_data_raw$market)
+unique(airbnb_data_raw$state)
+unique(airbnb_data_raw$neighbourhood_group_cleansed)
+```
+
+A brief summary of the variables are as follows-
+
+* The street column has a lot of entries, which do repeat. This is the most granular address description.
+* There are 195 unique values in the neighbourhood columns and 221 in the neighbourhood cleansed columns. This also seems to be a little too granular for the purpose. 
+* The five boroughs of New York is given by the Neighbourhood_Group_Cleansed column, which along with the zipcode should provide with a good depth for location analyses.
+* The State column has a couple of different variations of "NY". It also has a couple of records for CA, and MP, which is an indication of incorrect data. We also see values such as "London" and "Kyoto" Market, which is also a sign of incorrect information.
+
+***
+
+####Data subset
+Based on the above data exploration, a couple of key columns are extracted for EDA and deep dives from the AirBnB dataset
+
+```{r AirBnB variable extract, include = FALSE}
+
+airbnb_drop_columns <- c("listing_url", "scrape_id", "last_scraped", "name", "summary", "space", "description", "experiences_offered", "neighborhood_overview", "notes", "transit", "access", "interaction", "house_rules", "thumbnail_url", "medium_url", "picture_url", "xl_picture_url", "host_id", "host_url", "host_name", "host_since", "host_location", "host_about", "host_response_time", "host_response_rate", "host_acceptance_rate", "host_is_superhost", "host_thumbnail_url", "host_picture_url", "host_neighbourhood", "host_listings_count", "host_total_listings_count", "host_verifications", "host_has_profile_pic", "host_identity_verified", "minimum_minimum_nights", "maximum_minimum_nights", "minimum_maximum_nights", "maximum_maximum_nights", "minimum_nights_avg_ntm", "maximum_nights_avg_ntm", "calendar_updated", "has_availability", "calendar_last_scraped", "requires_license", "license", "jurisdiction_names", "instant_bookable", "is_business_travel_ready", "cancellation_policy", "require_guest_profile_picture", "require_guest_phone_verification", "calculated_host_listings_count", "calculated_host_listings_count_entire_homes", "calculated_host_listings_count_private_rooms", "calculated_host_listings_count_shared_rooms", "street", "state", "amenities", "bed_type", "guests_included", "extra_people", "zipcode_new", "beds")
+
+airbnb_data_extract <- airbnb_data_raw[, !names(airbnb_data_raw) %in% airbnb_drop_columns]
+
+```
+
+The variables that are chosen for further analyses are as follows.
+
+```{r AirBnB final variable list}
+contents(airbnb_data_extract)$contents
+```
+
+The client is interested in 2 bedroom apartments. A quick view of the spread across bedrooms is as below.
+
+```{r AirBnB bedroom variable, include=FALSE}
+summary(airbnb_data_extract$bedrooms)
+table(airbnb_data_extract$bedrooms)
+```
+
+```{r AirBnB Bedroom Plot, warning=FALSE}
+plot_ly(x = as.data.frame(table(airbnb_data_extract$bedrooms))$Var1, y = as.data.frame(table(airbnb_data_extract$bedrooms))$Freq, color = as.data.frame(table(airbnb_data_extract$bedrooms))$Var1, type = "bar", showlegend = FALSE) %>% layout(title = "Frequency Distributon of Listings Across Bedrooms", xaxis = list(title = "Bedrooms"), yaxis = list(title = "Count"))
+
+```
+
+There are a lot of bedroom values that are missing. While this could be imputed with a square feet analysis, it is safer to exclude those records for the time being. It is observed that most of the listings are for a single bedroom. The hypothesis here could be that the host is renting out a single room in the apartment they stay in, which is quite common. As the client is not interested in such a scenario, the data is further subsetted for 2 bedroom listings only.
+
+```{r AirBnB beedroom subset}
+airbnb_data_subset <- airbnb_data_extract[which(airbnb_data_extract$bedrooms == 2),]
+setDT(airbnb_data_subset)
+```
+
+The resultant dataset contains of 6497 listings and 47 variables for our analyses.
+
+***
+
+####Price Check
+As noticed above, the cleaned up price columns looks to have certain outliers. The spread of the price is calculated for each property type.
+
+```{r}
+summary_price <- setDT(airbnb_data_subset)[, list(min = min(price_cleaned), Q1 = quantile(price_cleaned)[2], mean = mean(price_cleaned), Q3 = quantile(price_cleaned)[4], max = max(price_cleaned), count = length(price_cleaned)), by = .(property_type)]
+summary_price[order(-count)]
+```
+
+* It is noticed that Apartment listings are significantly more common in New York as compared to other property types.
+* There are certain values that are clear outliers (price $0) and some suspected records (price $9999). A deeper view into the data and the actual listing suggests that there are infact listings for $9999 that are legitimate (verified using the listing url). Hence, we do not perform any outlier treatment on the price points to remove the higher points as there is no clear indication of what a outlier is based on business rules.
+
+The top 6 property types are chosen for the analysis. The remaining types account for very few listings and may be discarded. The "Serviced apartment", though significantly lower than the other listings, are still included in the analyses because they are priced higher for each night, providing for potential investments.
+
+```{r}
+top_property <- summary_price$property_type[order(-summary_price$count)][1:6]
+```
+
+To demonstrate what a statistical outlier looks like, the data has been standardized for each property type and extreme points that are 20SD away from the mean are removed to provide a clearer view of the data.
+
+```{r AirBnB price scale plot, warning=FALSE}
+airbnb_data_subset[, scale:= scale(price_cleaned, center = T, scale = T), by = .(property_type)]
+
+plot_ly(airbnb_data_subset[which(property_type %in% top_property & scale < 20)], y = ~price_cleaned, color = ~neighbourhood_group_cleansed, type = "box") %>% layout(title = "Price Distribution Across Boroughs", xaxis = list(title = "Boroughs"), yaxis = list(title = "Price"))
+```
+
+It looks like listings in Manhattan are usually priced higher than those in other regions, though there are certain high priced listings in Brooklyn. Manhattan and Brooklyn make up the key neighbourhoods and potential investment zones.
+
+The listings with price 0 are removed from the analyses. A few of the listings with high prices were manually checked on the website, and the prices were verified to be what was actually listed. Hence, the higher price listings are kept as is.
+
+```{r AirBnB price subset}
+airbnb_data_subset <- airbnb_data_subset[which(price_cleaned >0),]
+```
+
+***
+
+####Revenue Calculation
+
+* The revenue for each listing is calculated using the price/night and the occupancy rate assumed at 75%.
+* The revenue is calculated as price/night * total number of nights (given by occupancy in a year)
+
+```{r AirBnB revenue calculation}
+airbnb_data_subset[,revenue_year := price_cleaned * 0.75 * 365]
+```
+
+```{r AirBnB revenue per year}
+summary(airbnb_data_subset$revenue_year)
+```
+
+It is noted that there are certain apartment listings that generate upward of $2 million dollars every year. Usually, a listing is expected to generate 50k to 70k every year. A further breakdown of this information is provided below for each property type.
+
+```{r AirBnB revenue summary by property}
+summary_revenue <- setDT(airbnb_data_subset)[, list(min = min(revenue_year), Q1 = quantile(revenue_year)[2], mean = mean(revenue_year), Q3 = quantile(revenue_year)[4], max = max(revenue_year), count = length(revenue_year)), by = .(property_type)]
+summary_revenue[order(-summary_revenue$count)]
+```
+
+It is noticeable that while Apartments are the most common listings, a Condominium or a Serviced Apartment could possibly generate higher revenue if occupancy rate is high.
+
+***
+***
+
+##The Zillow data
+
+####Checking for the data structure
+
+```{r Zillow Dimensions}
+#Check the number of records and variables
+dim(zillow_data_raw)
+```
+
+The Zillow data consists of 262 variables and 8946 listings present in it.
+
+***
+
+####Checking for duplicates in the dataset
+```{r Zillow Duplicates}
+#Check for duplicates in the data
+zillow_data_raw[which(duplicated(zillow_data_raw) == T),]
+zillow_data_raw[which(duplicated(zillow_data_raw$RegionID) == T),]
+```
+
+There are no overall duplicates in the data, nor with the RegionIDs. Each record could be uniquely identified using the RegionID column.
+
+***
+
+####Checking the variables
+```{r Zillow Structure, include=FALSE}
+str(zillow_data_raw)
+```
+
+
+```{r Zillow metadata}
+zillow_numMissing <- contents(zillow_data_raw, sort = c("NAs"))$contents
+table(zillow_numMissing$Storage)
+```
+
+A majority of the columns are integer values, containing the median price of the listing, with each column representing a particular year-month. A brief view of the same is given below.
+
+```{r Zillow MetaData Display}
+zillow_numMissing[order(-zillow_numMissing$NAs),]
+```
+
+***
+
+####Key Findings
+
+* As is evident from the above table, a lot of the early years contain missing values. We would have to filter our data past a particular year for our analyses.
+* The data is in a wide format and might have to be transformed into a long view for analyses and manipulation.
+
+***
+
+####Checking the region columns
+
+```{r Zillow zipcode check, include = FALSE}
+unique(zillow_data_raw$RegionName)
+class(zillow_data_raw$RegionName)
+```
+
+The zipcode is given by the RegionName column, that is represented as an integer. There are a few columns that help identify the location. The columns are the city, state, metro and countyname. A summary of this is present below.
+
+```{r Zillow location check}
+sapply(zillow_data_raw[,c("City", "State", "Metro", "CountyName")], function(x) length(unique(x)))
+```
+
+```{r Zillow location unique values, include = FALSE}
+unique(zillow_data_raw$State)
+unique(zillow_data_raw$City[grep("^New|new", zillow_data_raw$City, perl = T)])
+unique(zillow_data_raw$Metro[grep("^New|new", zillow_data_raw$Metro, perl = T)])
+unique(zillow_data_raw$CountyName[grep("^New|new", zillow_data_raw$CountyName, perl = T)])
+```
+
+A study of the unique States and Cities shows that the information present in the Zillow data is not restricted to New York but is for other cities also. The data is subsetted for city "New York"
+
+```{r zillow data extract}
+city <- c("New York")
+zillow_data_extract <- zillow_data_raw[which(zillow_data_raw$City == city),]
+```
+
+***
+
+####Data Transformation
+
+The data is transformed into a long format with the year-month as key and the median price information as the value.
+
+```{r zillow long transformation}
+year_cols <- names(zillow_data_extract)[grep("^X", names(zillow_data_extract), perl = T)]
+
+zillow_transformed <- gather(data = zillow_data_extract, key = "Year", value = "Median_Price", year_cols)
+zillow_transformed$Year <- as.character(gsub('[X,]','',zillow_transformed$Year))
+zillow_transformed <- zillow_transformed %>% separate(Year, c("Year", "Month"),"[.]")
+```
+
+***
+
+####Median Price Check
+
+The trend of the cost is verified in order to choose the appropriate next step for our analyses. This is done by creating a table of the median prices and ploting the trend across years as below.
+
+* The median price across all the months for a year is calculated
+* The year is filtered to 2010 and above in order to not go too much into the past
+* The median price is plotted to check the price changes for each zip code
+
+```{r Zillow price change, warning = FALSE}
+zillow_transformed$RegionName <- as.factor(zillow_transformed$RegionName)
+
+zillow_transformed %>% group_by(RegionName, Year) %>% filter(Year > 2010) %>% summarise(median_price_year = median(Median_Price)) %>%
+  plot_ly(x=~as.factor(Year), y=~median_price_year, group = ~RegionName, type = "scatter", color = ~RegionName, mode = "lines+markers") %>% layout(title = "Cost Variation Across Years", xaxis = list(title = "Year"), yaxis = list(title = "Cost"))
+
+```
+
+While it is noticed that there is a general increase in the median prices of the property across years, the increase has leveled off or is negligible over the past few years, with expections in certain zip codes (the higher priced areas) - 10013, 10028, 10025 to name a few. For ease of use and interpretation, the median price for 2017 is used as the cost of the property for further analyses.
+
+***
+
+####Data Subset
+
+The median price for 2017 is calculated for each zipcode.
+
+```{r zillow data subset}
+setDT(zillow_transformed)
+zillow_data_subset <- setDT(zillow_transformed[Year == 2017,])[, Median_Price_2017 := median(Median_Price), by = RegionName]
+
+zillow_data_subset <- unique(zillow_data_subset[,.(RegionName, Median_Price_2017)])
+```
+
+The final dataset contains 25 zipcodes and the median price for 2017, that will be used alongside the AirBnB data.
+
+***
+***
+
+#Data Merge
+
+The AirBnB and the Zillow data are merged based on the zipcodes in order to consolidate the cost information with the listings.
+
+```{r data merge}
+airbnb_zillow_data <- merge(airbnb_data_subset, zillow_data_subset, by.x = "zipcode_2", by.y = "RegionName")
+```
+
+```{r data check, include=FALSE}
+dim(airbnb_zillow_data)
+```
+
+The merged dataset contains of 1567 listings and cost information, with 50 variables of information that include the location, price, reviews, revenue and availability of a listing.
+
+The merged data set is checked to see if there are any duplicates or issues created.
+```{r data merge check}
+zipcode_match_check <- unique(airbnb_zillow_data[,.(neighbourhood_group_cleansed, zipcode_2)])
+```
+
+* The zipcode 10013 is listed to be a part of Brooklyn and Manhattan both. This is the case in the AirBnB data and has not cause any harm in the merge. A quick google search suggests that it is indeed a part of Manhattan. A manual correction is required.
+* The Zillow dataset had 25 unique zipcode information, while the merged dataset only has 24 unique values. 1 zipcode, 10312 does not have any 2 bedroom listings in the AirBnB data and hence is subsetted.
+
+```{r data manual correction}
+airbnb_zillow_data$neighbourhood_group_cleansed[which(airbnb_zillow_data$zipcode_2 == 10013)] <- "Manhattan"
+```
+
+***
+
+####Checking the reviews information
+
+The review column and availability are analysed with this limited number of records for ease of interpretation.
+
+Taking a look at the review columns.
+
+```{r data reviews summary}
+summary(airbnb_zillow_data$number_of_reviews)
+summary(airbnb_zillow_data$reviews_per_month)
+```
+
+* A quick look at the number of reviews suggest that there is a huge variation, with some properties getting reviewed a lot more than the others. The first_review and last_review dates would be useful in further breaking this information down. 
+* There are a lot of missing records in the reviews_per_month columns, and this may have to be recalculated using the number of reviews and duration
+
+```{r reviews unique check, include=FALSE}
+summary(airbnb_zillow_data$reviews_per_month[which(airbnb_zillow_data$number_of_reviews != 0)])
+unique(airbnb_zillow_data$number_of_reviews[which(is.na(airbnb_zillow_data$reviews_per_month))])
+```
+
+* There are some listings that do not have any reviews in the recent year, but a high reviews_per_month score.
+* There are also some listings that have been reviewed a lot in a short duration of time, but has not been reviews since (which suggests manipulation of reviews and data by the hosts).
+
+In order to use the reviews, it is better to create a derived metric which is the average reviews per month from the time of the first review to the current date. This ensures that we capture consistency and recency much better than the existing reviews per month. 
+
+The following functions are used to calculate the difference between two dates in number of months.
+```{r diff functions}
+#Calculate number of months passed from a reference point
+mon_ref <- function(date) { days <- as.POSIXlt(as.Date(date, origin="1900-01-01"));
+                          days$year*12 + days$mon }
+
+#Compute difference between two months
+mon_diff <- function(date1, date2) { mon_ref(date2) - mon_ref(date1) }
+```
+
+```{r}
+airbnb_zillow_data[, month_diff_todate := mon_diff(as.Date(first_review), Sys.Date())]
+airbnb_zillow_data[, review_pm_todate := number_of_reviews/month_diff_todate] 
+
+airbnb_zillow_data$review_pm_todate[!is.finite(airbnb_zillow_data$review_pm_todate)] <- 0
+```
+
+
+This metric can be used as a placeholder for the popularity of the listing.
+
+***
+
+####Checking the availability information
+
+```{r}
+sapply(airbnb_zillow_data[,.(availability_30, availability_60, availability_90, availability_365)], summary)
+```
+
+The availability columns looks to have a lot of 0's present, which means that the lisitng is not available at all for booking for that time period. This seems suspicious as it is the case for a lot of listings. This might be because of some data entry issue. In order to perform any analyses better, it might be a safer approach to subset for listings with any non-zero value till the time that it can be safely judged as not a data error.
+
+***
+***
+
+#Deep Dive
+
+The aim of the deep dive is to come up with an idea of what zipcodes are profitable, are popular and can be deemed as good investment areas. This can be achieved in multiple stages, each aimed at revealing a particular aspect of the area by the following steps.
+
+***
+
+###Analysis of listing count
+
+**What is the neighbourhood that has the most listings in NYC?**
+
+The data is analysed in order to understand how the listings are spread across the boroughs and the zipcodes presently. This would serve as an indication of which is the popular area currently in NYC.
+
+```{r summary listings, include=FALSE}
+table(airbnb_zillow_data$neighbourhood_group_cleansed)
+```
+
+```{r}
+plot_ly(x = as.data.frame(table(airbnb_zillow_data$neighbourhood_group_cleansed))$Var1, y = as.data.frame(table(airbnb_zillow_data$neighbourhood_group_cleansed))$Freq, name = "Frequency", color = as.data.frame(table(airbnb_zillow_data$neighbourhood_group_cleansed))$Var1, type = "bar", showlegend = FALSE) %>% layout(title = "Frequency Distributon of Listings Across Boroughs", xaxis = list(title = "Boroughs"), yaxis = list(title = "Count"))
+```
+
+```{r, warning=FALSE}
+airbnb_zillow_data[, .(count = .N), by = .(neighbourhood_group_cleansed, zipcode_2)] %>%
+  plot_ly(x = ~zipcode_2, y = ~count, type = "bar", color = ~neighbourhood_group_cleansed) %>% layout(title = "Frequency Distributon of Listings Across Zipcode", xaxis = list(title = "Zipcode"), yaxis = list(title = "Count"))
+```
+
+The summary of the above analyses is present below.
+
+```{r}
+listing_count <- airbnb_zillow_data[, .(count = .N), by = .(neighbourhood_group_cleansed, zipcode_2)]
+listing_count[, list_rank := frank(-count), by = list(neighbourhood_group_cleansed)]
+listing_count[, overall_list_rank := frank(-count)]
+listing_count[, overall_list_rank_unique := frank(-count, ties.method = "first")]
+setkey(listing_count, overall_list_rank)
+listing_count
+```
+
+***
+
+###Analysis of price/night
+
+**How does the price reflect across region and zipcodes?**
+
+The price that is demanded by each host is analysed as this could be a clear indication of which zone has more demand.
+
+```{r, warning=FALSE}
+plot_ly(airbnb_zillow_data[which(property_type %in% top_property)], y = ~price_cleaned, color = ~property_type, type = "box") %>% layout(title = "Price Distributon of Listings Across Property Type", xaxis = list(title = "Property Type"), yaxis = list(title = "Price $"))
+```
+
+It is noticed that while generally, there are other apartment types that may be higher priced on average, Apartments are usually priced higher than other types. The data also is heavily skewed in the number of apartment listings, which cannot be ignored. This is an indication that apartments could be a prefered property type by tourists and renters.
+
+```{r, warning=FALSE}
+plot_ly(airbnb_zillow_data[which(property_type %in% top_property)], y = ~price_cleaned, color = ~neighbourhood_group_cleansed, type = "box") %>% layout(title = "Price Distributon of Listings Across Boroughs", xaxis = list(title = "Boroughs"), yaxis = list(title = "Price $"))
+```
+
+Manhattan and Brooklyn are clearly the two boroughs that bring in most of the revenue. This could be attributed to the inherent popularity and the sheer volume of tourist spots in the surrounding regions. This is further broken down into the zipcodes as below.
+
+```{r}
+airbnb_zillow_data[, .(median_price = median(price_cleaned)), by = .(neighbourhood_group_cleansed, zipcode_2)] %>%
+  plot_ly(x = ~zipcode_2, y = ~median_price, type = "bar", color = ~neighbourhood_group_cleansed) %>% layout(title = "Price Distributon of Listings Across Zipcodes", xaxis = list(title = "Zipcode"), yaxis = list(title = "Median Price $"))
+```
+
+When the median price/night is analysed across zipcodes, it reveals that all listings across Manhattan and priced generally higher than the listings in other areas. The spread of the prices for each zipcode is displayed below.
+
+```{r}
+plot_ly(airbnb_zillow_data[which(property_type %in% top_property)],x=~zipcode_2, y = ~price_cleaned, color = ~neighbourhood_group_cleansed, type = "box") %>% layout(title = "Price Distributon of Listings Across Zipcodes", xaxis = list(title = "Zipcode"), yaxis = list(title = "Price $"))
+```
+
+While the data points to certain listings that mathetically look to be outliers, there is no strong business case against them. The trend noticed above is reflected here again, with listings in Manhattan priced more than Brooklyn and listings in Staten Island and Queens are the least.
+
+The summary of the above analyses is present below.
+
+```{r}
+listing_median_price <- airbnb_zillow_data[, .(median_price = median(price_cleaned)), by = .(neighbourhood_group_cleansed, zipcode_2)]
+listing_median_price[, median_rank := frank(-median_price), by = list(neighbourhood_group_cleansed)]
+listing_median_price[, overall_median_rank := frank(-median_price)]
+listing_median_price[, overall_median_rank_unique := frank(-median_price, ties.method = "first")]
+setkey(listing_median_price, overall_median_rank)
+listing_median_price
+```
+
+***
+
+###Analysis of revenue
+
+**How does the revenue calculated vary across region and zipcode?**
+
+While the price per night is an indication of how much a listing would cost, the revenue it brings in is useful to identify the top revenue bringing zip-codes. 
+
+Since we do not have varying occupancy rates for this analysis, the spread across individual regions would remain the same as before. But because of the sheer number of listings present in Manhattan and Brooklyn, along with the general higher cost, we notice that the revenue brought in by the two boroughs are significantly higher than the other boroughs.
+
+```{r, warning=FALSE}
+airbnb_zillow_data[, .(sum_revenue = sum(revenue_year)), by = .(neighbourhood_group_cleansed, zipcode_2)] %>%
+  plot_ly(x = ~zipcode_2, y = ~sum_revenue, type = "bar", color = ~neighbourhood_group_cleansed) %>% layout(title = "Revenue Distributon of Listings Across Zipcodes", xaxis = list(title = "Zipcodes"), yaxis = list(title = "Sum Revenue $"))
+```
+
+
+***
+
+###Analysis of investment
+
+**How much would the investment be across different regions?**
+
+While we have analysed the revenue and the price of a listing in a region, it would also be necessary to look at the investment necessary in each of the region.
+
+```{r}
+plot_ly(airbnb_zillow_data[which(property_type %in% top_property)], y = ~Median_Price_2017, color = ~neighbourhood_group_cleansed, type = "box") %>% layout(title = "Investment Distributon of Listings Across Boroughs", xaxis = list(title = "Borough"), yaxis = list(title = "Investment $"))
+
+```
+
+It can be seen that it takes a significantly higher investment to own and rent out a property in Manhattan as compared to Brooklyn.
+
+```{r}
+airbnb_zillow_data[, .(median_investment = median(Median_Price_2017)), by = .(neighbourhood_group_cleansed, zipcode_2)] %>%
+  plot_ly(x = ~zipcode_2, y = ~median_investment, type = "bar", color = ~neighbourhood_group_cleansed) %>% layout(title = "Investment Distributon of Listings Across Zipcodes", xaxis = list(title = "Zipcode"), yaxis = list(title = "Median Investment $"))
+```
+
+The summary of the above analyses is present below.
+
+```{r}
+listing_investment_price <- airbnb_zillow_data[, .(median_investment = median(Median_Price_2017)), by = .(neighbourhood_group_cleansed, zipcode_2)]
+listing_investment_price[, investment_rank := frank(median_investment), by = list(neighbourhood_group_cleansed)]
+listing_investment_price[, overall_investment_rank := frank(median_investment)]
+listing_investment_price[, overall_investment_rank_unique := frank(median_investment, ties.method = "first")]
+setkey(listing_investment_price, overall_investment_rank)
+listing_investment_price
+```
+
+***
+
+###Analysis of reviews
+
+**How are the reviews across different region and zipcode?**
+
+While it is obvious that Manhattan and Brooklyn are the most profitable (in terms of revenue) and also the most costly in terms of investment, it might be useful to check the reviews and availability as an indicator of people's preference in the area.
+
+```{r, warning=FALSE}
+plot_ly(airbnb_zillow_data[which(property_type %in% top_property)], y = ~review_pm_todate, color = ~neighbourhood_group_cleansed, type = "box") %>% layout(title = "Reviews Distributon of Listings Across Boroughs", xaxis = list(title = "Boroughs"), yaxis = list(title = "Review Per Month"))
+```
+
+While there are only a handful of listings in Staten Island and Queens, they look to be more popular amongst the tourists as compared to the listings in Manhattan and Brooklyn (which does have some very poorly reviewed listings). If a listing is popular, it can be checked for its availability over a period of 3 months as below.
+
+```{r, warning=FALSE, message=FALSE}
+plot_ly(data = airbnb_zillow_data[which(review_pm_todate > 0 & availability_90 > 0)], x = ~availability_90, y = ~review_pm_todate, color = ~neighbourhood_group_cleansed) %>% layout(title = " Variation of Review Per Month and Availability (over 90 days)", xaxis = list(title = "Availability over 90 days"), yaxis = list(title = "Review Per Month"))
+```
+
+While there is no clear pattern in the data, it is evident that reviews play an important role for pre-booking. It might be thought of that if a listing is reviewed very well, it has a better chance of being booked in advance, and on that notion, lisitings in Queens and Staten Island might serve to be good investments.
+
+A summary of the above analysis is presented below.
+
+```{r}
+listing_reviews_temp_data <- airbnb_zillow_data[which(review_pm_todate >0 & availability_90 > 0),]
+listing_reviews <- listing_reviews_temp_data[, .(median_reviews_pm = median(review_pm_todate)), by = .(neighbourhood_group_cleansed, zipcode_2)]
+listing_reviews[, review_rank := frank(-median_reviews_pm), by = list(neighbourhood_group_cleansed)]
+listing_reviews[, overall_reviews_rank := frank(-median_reviews_pm)]
+listing_reviews[, overall_reviews_rank_unique := frank(-median_reviews_pm, ties.method = "first")]
+setkey(listing_reviews, overall_reviews_rank)
+listing_reviews
+```
+
+***
+
+###Analysis of breakeven point
+
+**What would be the breakeven time for the investment in a region?**
+
+A final question to ask would be on how many years would it take to reach the break even point, assuming the current revenue generated and occupancy rate (with no expected change over years). This value would add significant weight on each area, because it might not be viable to investment heavily only for the returns realized over a significant number of years.
+
+```{r}
+airbnb_zillow_data[, breakeven := Median_Price_2017/revenue_year]
+
+plot_ly(airbnb_zillow_data[which(property_type %in% top_property)], y = ~breakeven, color = ~neighbourhood_group_cleansed, type = "box") %>% layout(title = "Breakeven Distributon of Listings Across Boroughs", xaxis = list(title = "Boroughs"), yaxis = list(title = "Breakeven Point in Years"))
+
+```
+
+As expected, some listings in Manhattan will only be realized after a significant amount of years. A deep dive at a region level is present below.
+
+```{r, warning=FALSE}
+airbnb_zillow_data[, .(median_breakeven = median(breakeven)), by = .(neighbourhood_group_cleansed, zipcode_2)] %>%
+  plot_ly(x = ~zipcode_2, y = ~median_breakeven, type = "bar", color = ~neighbourhood_group_cleansed) %>% layout(title = "Breakeven Distributon of Listings Across Zipcodes", xaxis = list(title = "Zipcode"), yaxis = list(title = "Median Breakeven Point in Years"))
+
+```
+
+It is faster to realize the money invested in Queens and Staten Island, as compared to the other boroughs. This is worth consideration.
+
+A summary of the analysis is present below.
+
+```{r}
+
+listing_breakeven <- airbnb_zillow_data[, .(median_breakeven = median(breakeven)), by = .(neighbourhood_group_cleansed, zipcode_2)]
+listing_breakeven[, breakeven_rank := frank(median_breakeven), by = list(neighbourhood_group_cleansed)]
+listing_breakeven[, overall_breakeven_rank := frank(median_breakeven)]
+listing_breakeven[, overall_breakeven_rank_unique := frank(median_breakeven, ties.method = "first")]
+setkey(listing_breakeven, overall_breakeven_rank)
+listing_breakeven
+```
+
+***
+***
+
+#Consolidation and recommendation
+
+The above deep dives had a single objective - to provide individual recommendations based on a regions current scenario, popularity, investment needed, profitability and customer attraction. The inherent understanding is that while it would be tough to come up with an objective list of top zipcodes, it would be better and somewhat fruitful to break it down by key drivers of investment. A particular zipcode that brings in a lot of revenue might not be the most profitable investment. Another zipcode that does not have many listings might be popular amongst customer and may provide with quicker returns. A simple univariate decision cannot be made. A better approach might be to come up with a list of recommendations as below.
+
+Renaming certain summary columns for better consolidation and interpretation
+
+```{r}
+names(listing_count)[which(names(listing_count) %in% c("neighbourhood_group_cleansed", "zipcode_2"))] <- c("Count_Neighbourhood", "Count_Zip")
+names(listing_median_price)[which(names(listing_median_price) %in% c("neighbourhood_group_cleansed", "zipcode_2"))] <- c("Price_Neighbourhood", "Price_Zip")
+names(listing_investment_price)[which(names(listing_investment_price) %in% c("neighbourhood_group_cleansed", "zipcode_2"))] <- c("Invest_Neighbourhood", "Invest_Zip")
+names(listing_reviews)[which(names(listing_reviews) %in% c("neighbourhood_group_cleansed", "zipcode_2"))] <- c("Review_Neighbourhood", "Review_Zip")
+names(listing_breakeven)[which(names(listing_breakeven) %in% c("neighbourhood_group_cleansed", "zipcode_2"))] <- c("Breakeven_Neighbourhood", "Breakeven_Zip")
+```
+
+***
+
+* Based on count, these are the best neighbourhoods
+
+```{r}
+listing_count[,.(overall_list_rank, Count_Neighbourhood, Count_Zip)][1:10,]
+```
+
+* Based on price and revenue, these are the best neighbourhoods
+
+```{r}
+listing_median_price[,.(overall_median_rank, Price_Neighbourhood, Price_Zip)][1:10,]
+```
+
+* Based on investment, these are the best neighbourhoods
+
+```{r}
+listing_investment_price[,.(overall_investment_rank, Invest_Neighbourhood, Invest_Zip)][1:10,]
+```
+
+* Based on reviews and popularity, these are the best neighbourhoods
+
+```{r}
+listing_reviews[,.(overall_reviews_rank, Review_Neighbourhood, Review_Zip)][1:10,]
+```
+
+* Based on breakeven analysis, these are the best neighbourhoods
+
+```{r}
+listing_breakeven[,.(overall_breakeven_rank, Breakeven_Neighbourhood, Breakeven_Zip)][1:10,]
+```
+
+And when consolidated together, we get...
+
+```{r}
+listing_overall <- merge(listing_count[,c("overall_list_rank_unique", "Count_Neighbourhood", "Count_Zip")], listing_median_price[, c("overall_median_rank_unique", "Price_Neighbourhood", "Price_Zip")], by.x = "overall_list_rank_unique", by.y = "overall_median_rank_unique")
+listing_overall <- merge(listing_overall, listing_investment_price[, c("overall_investment_rank_unique", "Invest_Neighbourhood", "Invest_Zip")], by.x = "overall_list_rank_unique", by.y = "overall_investment_rank_unique")
+listing_overall <- merge(listing_overall, listing_reviews[, c("overall_reviews_rank_unique", "Review_Neighbourhood", "Review_Zip")], by.x = "overall_list_rank_unique", by.y = "overall_reviews_rank_unique")
+listing_overall <- merge(listing_overall, listing_breakeven[, c("overall_breakeven_rank_unique", "Breakeven_Neighbourhood", "Breakeven_Zip")], by.x = "overall_list_rank_unique", by.y = "overall_breakeven_rank_unique")
+
+listing_overall[,.(overall_list_rank_unique, Count_Zip, Price_Zip, Invest_Zip, Review_Zip, Breakeven_Zip)]
+```
+
+***
+
+It is also possible to come up with a single list of priority based on the above analysis.
+
+```{r}
+listing_singular <- merge(listing_count[,.(Count_Zip, Count_Neighbourhood, overall_list_rank)], listing_median_price[,.(Price_Zip, overall_median_rank)], by.x = "Count_Zip", by.y = "Price_Zip")
+listing_singular <- merge(listing_singular, listing_investment_price[,.(Invest_Zip, overall_investment_rank)], by.x = "Count_Zip", by.y = "Invest_Zip")
+listing_singular <- merge(listing_singular, listing_reviews[,.(Review_Zip, overall_reviews_rank)], by.x = "Count_Zip", by.y = "Review_Zip")
+listing_singular <- merge(listing_singular, listing_breakeven[,.(Breakeven_Zip, overall_breakeven_rank)], by.x = "Count_Zip", by.y = "Breakeven_Zip")
+
+listing_singular[, overall_Score := overall_list_rank * overall_median_rank * overall_investment_rank * overall_reviews_rank * overall_breakeven_rank]
+
+setkey(listing_singular, overall_Score)
+
+listing_singular[,.(Count_Zip, Count_Neighbourhood, overall_Score)]
+```
+
+The top investments based on all the above factors look to be in the areas 
+
+* Staten Island - 10304, 10303, 10306, 10305
+* Queens - 11434
+* Manhattan - 10036, 10011, 10013
+* Brooklyn - 11215, 11234
+
+***
+***
+
+#Next Steps
+
+The above analysis can be bettered through various improvements in data consolidation, analysis and review. A few of them are suggested below.
+
+* A major assumption made above is that the occupancy rate does not vary across time or across zip codes. It remains static at 75%. The next analysis should and must include a calculation for occupancy rates based on its drivers (no. customers, location, popularity and so on). This would further solidify the investment and revenue analysis.
+* The cost of the neighbourhoods should be calculated by analysing the time-series and projecting it into the future. For the current analysis, the last value has been picked up, but by calculating it mathematically, there would be enough information to vary and process.
+* The above analysis can be considered as univariates and the next step much contain a multivariate of the same.
+* While the scope was limited to finding the best areas (zipcodes) for investment, it could also be possible to strategize on how the company must proceed with its investment (in terms of time, description/host activities, marketing) based on the data received.
+
+***
+***
